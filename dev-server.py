@@ -40,12 +40,29 @@ class Handler(SimpleHTTPRequestHandler):
         period = qs.get('period', ['day'])[0]
         n = qs.get('n', ['320'])[0]
 
-        if not re.match(r'^\w+$', period) or not re.match(r'^\d+$', n):
-            return self._json(400, '{"error":"bad params"}')
-        # news 不需要 q,其余类型必须带合法的 q
-        if type_ != 'news' and (not q or len(q) > 300 or not SAFE.match(q)):
-            return self._json(400, '{"error":"bad params"}')
-        url = build_url(type_, q, period, n)
+        if type_ == 'emlist':
+            # 东方财富行情列表(个股/板块),只读查询
+            fid = qs.get('fid', ['f3'])[0]
+            fs = qs.get('fs', [''])[0]
+            po = qs.get('po', ['1'])[0]
+            pn = qs.get('pn', ['1'])[0]
+            pz = qs.get('pz', ['100'])[0]
+            fields = qs.get('fields', [''])[0]
+            if not re.match(r'^f\d{1,4}$', fid) or po not in ('0', '1') \
+                    or not re.match(r'^\d{1,3}$', pn) or not re.match(r'^\d{1,4}$', pz) \
+                    or not re.match(r'^[a-zA-Z0-9:+,!._]{1,100}$', fs) \
+                    or not re.match(r'^[f\d,]{1,200}$', fields):
+                return self._json(400, '{"error":"bad params"}')
+            size = min(int(pz), 1500)
+            url = (f'https://push2.eastmoney.com/api/qt/clist/get?pn={pn}&pz={size}'
+                   f'&po={po}&np=1&fltt=2&invt=2&fid={fid}&fs={urllib.parse.quote(fs, safe=":,+!._")}&fields={fields}')
+        else:
+            if not re.match(r'^\w+$', period) or not re.match(r'^\d+$', n):
+                return self._json(400, '{"error":"bad params"}')
+            # news 不需要 q,其余类型必须带合法的 q
+            if type_ != 'news' and (not q or len(q) > 300 or not SAFE.match(q)):
+                return self._json(400, '{"error":"bad params"}')
+            url = build_url(type_, q, period, n)
         if not url:
             return self._json(400, '{"error":"bad type"}')
 

@@ -28,16 +28,31 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { type = 'quote', q = '', period = 'day', n = '320' } = req.query;
+  const {
+    type = 'quote', q = '', period = 'day', n = '320',
+    fid = 'f3', fs = '', po = '1', pn = '1', pz = '100', fields = '',
+  } = req.query;
 
-  if (!/^\w+$/.test(period) || !/^\d+$/.test(n)) {
-    return res.status(400).json({ error: 'bad params' });
+  let url;
+  if (type === 'emlist') {
+    // 东方财富行情列表(个股/板块),只读查询
+    if (!/^f\d{1,4}$/.test(fid) || !/^[01]$/.test(po) || !/^\d{1,3}$/.test(pn)
+        || !/^\d{1,4}$/.test(pz) || !/^[a-zA-Z0-9:+,!._]{1,100}$/.test(fs)
+        || !/^[f\d,]{1,200}$/.test(fields)) {
+      return res.status(400).json({ error: 'bad params' });
+    }
+    const size = Math.min(parseInt(pz, 10), 1500);
+    url = `https://push2.eastmoney.com/api/qt/clist/get?pn=${pn}&pz=${size}&po=${po}&np=1&fltt=2&invt=2&fid=${fid}&fs=${fs}&fields=${fields}`;
+  } else {
+    if (!/^\w+$/.test(period) || !/^\d+$/.test(n)) {
+      return res.status(400).json({ error: 'bad params' });
+    }
+    // news 不需要 q,其余类型必须带合法的 q
+    if (type !== 'news' && (!q || q.length > 300 || !SAFE.test(q))) {
+      return res.status(400).json({ error: 'bad params' });
+    }
+    url = buildUrl(type, q, period, n);
   }
-  // news 不需要 q,其余类型必须带合法的 q
-  if (type !== 'news' && (!q || q.length > 300 || !SAFE.test(q))) {
-    return res.status(400).json({ error: 'bad params' });
-  }
-  const url = buildUrl(type, q, period, n);
   if (!url) return res.status(400).json({ error: 'bad type' });
 
   try {

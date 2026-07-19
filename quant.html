@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>量化研究 · 只读看板</title>
+<style>
+:root{
+  --up:#e53935; --down:#00a651; --flat:#666;
+  --bg:#f5f6f8; --card:#fff; --text:#1a1a1a; --sub:#8a8f99;
+  --line:#ececf0; --accent:#2b6cf6;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;
+  background:var(--bg); color:var(--text); font-size:14px;
+}
+.wrap{max-width:1150px;margin:0 auto;padding:16px 14px 60px}
+header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+header h1{font-size:22px;font-weight:700}
+header .note{font-size:12px;color:var(--sub)}
+.tabs{display:flex;gap:8px;margin-bottom:14px}
+.tabs button{
+  border:1px solid var(--line);background:var(--card);color:var(--sub);
+  font-size:14px;font-weight:600;padding:8px 18px;border-radius:10px;cursor:pointer;
+}
+.tabs button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--flat)}
+/* 指数卡片 */
+.idxGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:16px}
+.idxCard{background:var(--card);border-radius:12px;padding:10px 14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.idxCard .n{font-size:13px;color:var(--sub)}
+.idxCard .p{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.idxCard .c{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+/* 版块布局 */
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px}
+.card{background:var(--card);border-radius:12px;padding:12px 14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.card h3{font-size:15px;margin-bottom:8px}
+/* 表格 */
+.tblWrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;white-space:nowrap}
+th{
+  text-align:right;font-size:12px;color:var(--sub);font-weight:500;
+  padding:6px 8px;border-bottom:1px solid var(--line);cursor:pointer;user-select:none;
+}
+th:first-child,td:first-child{text-align:left}
+th.sorted{color:var(--accent);font-weight:700}
+td{padding:7px 8px;text-align:right;font-size:13.5px;border-bottom:1px solid var(--line)}
+td .nm{font-weight:600}
+td .cd{color:var(--sub);font-size:12px;margin-left:6px}
+tr:hover td{background:#fafbfd}
+/* 筛选表单 */
+.filters{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;align-items:flex-end}
+.fld label{display:block;font-size:12px;color:var(--sub);margin-bottom:3px}
+.fld input{
+  width:86px;font-size:14px;padding:7px 8px;border:1px solid var(--line);
+  border-radius:8px;background:var(--card);outline:none;
+}
+.fld input:focus{border-color:var(--accent)}
+.btn{
+  border:0;background:var(--accent);color:#fff;font-size:14px;font-weight:600;
+  padding:9px 22px;border-radius:9px;cursor:pointer;
+}
+.btn.ghost{background:var(--card);color:var(--accent);border:1px solid var(--accent)}
+.meta{font-size:12px;color:var(--sub);margin:6px 2px 10px}
+/* 权重滑条 */
+.wRow{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.wRow label{width:130px;font-size:13px}
+.wRow input[type=range]{flex:1}
+.wRow .v{width:34px;text-align:right;font-size:13px;color:var(--sub)}
+.disclaimer{margin-top:26px;font-size:12px;color:var(--sub);line-height:1.7}
+.loading{color:var(--sub);padding:30px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>量化研究</h1>
+  <div class="note">只读数据 · <span id="upTime">--</span></div>
+</header>
+
+<div class="tabs">
+  <button id="tb-dash" class="active" onclick="go('dash')">市场看板</button>
+  <button id="tb-screen" onclick="go('screen')">股票筛选</button>
+  <button id="tb-rank" onclick="go('rank')">因子排名</button>
+</div>
+
+<!-- 看板 -->
+<div id="pg-dash">
+  <div class="idxGrid" id="idxGrid"></div>
+  <div class="cols">
+    <div class="card"><h3>涨幅榜</h3><div class="tblWrap" id="tGain"><div class="loading">加载中…</div></div></div>
+    <div class="card"><h3>跌幅榜</h3><div class="tblWrap" id="tLose"><div class="loading">加载中…</div></div></div>
+    <div class="card"><h3>成交额榜</h3><div class="tblWrap" id="tAmt"><div class="loading">加载中…</div></div></div>
+    <div class="card"><h3>行业板块 · 涨幅榜</h3><div class="tblWrap" id="tSector"><div class="loading">加载中…</div></div></div>
+  </div>
+</div>
+
+<!-- 筛选 -->
+<div id="pg-screen" style="display:none">
+  <div class="card">
+    <div class="filters">
+      <div class="fld"><label>涨跌幅 ≥ %</label><input id="fPctMin" type="number" placeholder="不限"></div>
+      <div class="fld"><label>涨跌幅 ≤ %</label><input id="fPctMax" type="number" placeholder="不限"></div>
+      <div class="fld"><label>换手率 ≥ %</label><input id="fTurnMin" type="number" placeholder="不限"></div>
+      <div class="fld"><label>量比 ≥</label><input id="fVrMin" type="number" placeholder="不限"></div>
+      <div class="fld"><label>市盈率 ≥</label><input id="fPeMin" type="number" placeholder="不限"></div>
+      <div class="fld"><label>市盈率 ≤</label><input id="fPeMax" type="number" placeholder="不限"></div>
+      <div class="fld"><label>总市值 ≥ 亿</label><input id="fCapMin" type="number" placeholder="不限"></div>
+      <div class="fld"><label>总市值 ≤ 亿</label><input id="fCapMax" type="number" placeholder="不限"></div>
+      <button class="btn" onclick="runScreen()">筛选</button>
+      <button class="btn ghost" onclick="resetScreen()">重置</button>
+    </div>
+    <div class="meta" id="screenMeta">筛选范围:全市场成交额前 1000 只(公开免费接口,约 1 分钟更新一次)</div>
+    <div class="tblWrap" id="tScreen"><div class="loading">设置条件后点「筛选」</div></div>
+  </div>
+</div>
+
+<!-- 排名 -->
+<div id="pg-rank" style="display:none">
+  <div class="cols" style="grid-template-columns:320px 1fr;align-items:start">
+    <div class="card">
+      <h3>因子权重</h3>
+      <div class="wRow"><label>动量(当日涨幅)</label><input type="range" id="wMom" min="0" max="100" value="30" oninput="wShow()"><span class="v" id="vMom">30</span></div>
+      <div class="wRow"><label>换手率</label><input type="range" id="wTurn" min="0" max="100" value="10" oninput="wShow()"><span class="v" id="vTurn">10</span></div>
+      <div class="wRow"><label>量比</label><input type="range" id="wVr" min="0" max="100" value="10" oninput="wShow()"><span class="v" id="vVr">10</span></div>
+      <div class="wRow"><label>低估值(低市盈率)</label><input type="range" id="wPe" min="0" max="100" value="25" oninput="wShow()"><span class="v" id="vPe">25</span></div>
+      <div class="wRow"><label>小市值</label><input type="range" id="wCap" min="0" max="100" value="25" oninput="wShow()"><span class="v" id="vCap">25</span></div>
+      <button class="btn" style="margin-top:8px" onclick="runRank()">计算 Top 50</button>
+      <div class="meta" style="margin-top:8px">对全市场成交额前 1000 只做因子 Z 分数加权,得分越高排名越前。</div>
+    </div>
+    <div class="card"><h3>排名结果</h3><div class="tblWrap" id="tRank"><div class="loading">设置权重后点「计算」</div></div></div>
+  </div>
+</div>
+
+<div class="disclaimer">
+  数据来源于公开免费行情接口(可能有延迟),仅供研究和学习使用,不构成任何投资建议。
+  本页面所有功能均为只读查询,不涉及任何交易、下单或账户操作。
+</div>
+</div>
+
+<script>
+const API = '/api/hq';
+const FS_A = 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23';   // 全部 A 股
+const FS_SECTOR = 'm:90+t:2';                        // 行业板块
+const F = 'f2,f3,f5,f6,f8,f9,f10,f12,f14,f20,f23';   // 价/涨跌幅/量/额/换手/PE/量比/代码/名称/总市值/PB
+const INDICES = [
+  {code:'sh000001',name:'上证指数'},{code:'sz399001',name:'深证成指'},{code:'sz399006',name:'创业板指'},
+  {code:'usDJI',name:'道琼斯'},{code:'usIXIC',name:'纳斯达克'},{code:'usINX',name:'标普500'},
+];
+const $ = id=>document.getElementById(id);
+const cls = v=>v>0?'up':(v<0?'down':'flat');
+const pct = v=>isFinite(v)?(v>0?'+':'')+Number(v).toFixed(2)+'%':'--';
+const yi = v=>isFinite(v)?(v/1e8).toFixed(v>=1e10?0:1)+'亿':'--';
+const num = (v,d=2)=>isFinite(v)?Number(v).toFixed(d):'--';
+
+async function em(params){
+  const u = new URLSearchParams({type:'emlist', ...params});
+  const r = await fetch(`${API}?${u}`);
+  const j = await r.json();
+  return (j.data && j.data.diff) || [];
+}
+function stamp(){ $('upTime').textContent = '更新 ' + new Date().toTimeString().slice(0,8); }
+
+/* ---------- Tab ---------- */
+let cur = 'dash';
+function go(t){
+  cur = t;
+  for(const x of ['dash','screen','rank']){
+    $('pg-'+x).style.display = x===t?'block':'none';
+    $('tb-'+x).classList.toggle('active', x===t);
+  }
+  if(t==='screen' || t==='rank') loadUniverse();
+}
+
+/* ---------- 看板 ---------- */
+async function loadIndices(){
+  try{
+    const codes = INDICES.map(i=>i.code);
+    const r = await fetch(`${API}?type=quote&q=${codes.join(',')}`);
+    const text = await r.text();
+    const map = {};
+    for(const m of text.matchAll(/v_([^=]+)="([^"]*)"/g)){
+      const f = m[2].split('~');
+      if(f.length>34) map[m[1]] = {price:+f[3], pct:+f[32]};
+    }
+    $('idxGrid').innerHTML = INDICES.map(i=>{
+      const q = map[i.code];
+      return `<div class="idxCard"><div class="n">${i.name}</div>
+        <div class="p ${q?cls(q.pct):'flat'}">${q?num(q.price):'--'}</div>
+        <div class="c ${q?cls(q.pct):'flat'}">${q?pct(q.pct):'--'}</div></div>`;
+    }).join('');
+  }catch(e){}
+}
+function miniTable(rows, isSector){
+  return `<table><tr><th>名称</th><th>现价</th><th>涨跌幅</th><th>${isSector?'':'换手'}</th><th>成交额</th></tr>` +
+    rows.map(r=>`<tr>
+      <td><span class="nm">${r.f14}</span><span class="cd">${r.f12}</span></td>
+      <td>${num(r.f2)}</td>
+      <td class="${cls(r.f3)}">${pct(r.f3)}</td>
+      <td>${isSector?'':num(r.f8)+'%'}</td>
+      <td>${yi(r.f6)}</td>
+    </tr>`).join('') + '</table>';
+}
+async function loadDash(){
+  loadIndices();
+  try{
+    const [gain, lose, amt, sec] = await Promise.all([
+      em({fid:'f3', po:'1', pz:'10', fs:FS_A, fields:F}),
+      em({fid:'f3', po:'0', pz:'10', fs:FS_A, fields:F}),
+      em({fid:'f6', po:'1', pz:'10', fs:FS_A, fields:F}),
+      em({fid:'f3', po:'1', pz:'10', fs:FS_SECTOR, fields:'f2,f3,f6,f12,f14'}),
+    ]);
+    $('tGain').innerHTML = miniTable(gain);
+    $('tLose').innerHTML = miniTable(lose);
+    $('tAmt').innerHTML = miniTable(amt);
+    $('tSector').innerHTML = miniTable(sec, true);
+    stamp();
+  }catch(e){}
+}
+loadDash();
+setInterval(()=>{ if(!document.hidden && cur==='dash') loadDash(); }, 60000);
+
+/* ---------- 股票池(筛选与排名共用) ---------- */
+let universe = [], uniTime = 0, uniLoading = null;
+async function loadUniverse(){
+  if(Date.now()-uniTime < 60000 || uniLoading) return uniLoading;
+  // 接口单页上限 100 条,并行翻 10 页取成交额前 1000 只
+  uniLoading = Promise.all(
+    Array.from({length:10}, (_,i)=>em({fid:'f6', po:'1', pz:'100', pn:String(i+1), fs:FS_A, fields:F}))
+  ).then(pages=>{
+    const seen = new Set();
+    const rows = pages.flat().filter(r=>!seen.has(r.f12) && seen.add(r.f12));
+    if(rows.length){ universe = rows; uniTime = Date.now(); stamp(); }
+    uniLoading = null;
+  }).catch(()=>{ uniLoading = null; });
+  return uniLoading;
+}
+
+/* ---------- 筛选 ---------- */
+let scrRows = [], scrSort = {key:'f3', desc:true};
+function val(id){ const v = $(id).value.trim(); return v===''?null:parseFloat(v); }
+async function runScreen(){
+  $('tScreen').innerHTML = '<div class="loading">计算中…</div>';
+  await loadUniverse();
+  const [pMin,pMax,tMin,vrMin,peMin,peMax,cMin,cMax] =
+    ['fPctMin','fPctMax','fTurnMin','fVrMin','fPeMin','fPeMax','fCapMin','fCapMax'].map(val);
+  scrRows = universe.filter(r=>{
+    if(pMin!=null && !(r.f3>=pMin)) return false;
+    if(pMax!=null && !(r.f3<=pMax)) return false;
+    if(tMin!=null && !(r.f8>=tMin)) return false;
+    if(vrMin!=null && !(r.f10>=vrMin)) return false;
+    if(peMin!=null && !(r.f9>=peMin)) return false;
+    if(peMax!=null && !(r.f9<=peMax && r.f9>0)) return false;
+    if(cMin!=null && !(r.f20>=cMin*1e8)) return false;
+    if(cMax!=null && !(r.f20<=cMax*1e8)) return false;
+    return true;
+  });
+  $('screenMeta').textContent = `符合条件 ${scrRows.length} 只(范围:全市场成交额前 ${universe.length} 只)`;
+  renderScreen();
+}
+function resetScreen(){
+  for(const id of ['fPctMin','fPctMax','fTurnMin','fVrMin','fPeMin','fPeMax','fCapMin','fCapMax']) $(id).value='';
+  runScreen();
+}
+const SCR_COLS = [
+  ['f14','名称'],['f2','现价'],['f3','涨跌幅'],['f8','换手%'],['f10','量比'],
+  ['f9','市盈率'],['f23','市净率'],['f20','总市值'],['f6','成交额'],
+];
+function sortScreen(key){
+  if(scrSort.key===key) scrSort.desc = !scrSort.desc; else scrSort = {key, desc:true};
+  renderScreen();
+}
+function renderScreen(){
+  if(!scrRows.length){ $('tScreen').innerHTML = '<div class="loading">没有符合条件的股票</div>'; return; }
+  const {key, desc} = scrSort;
+  const rows = [...scrRows].sort((a,b)=>{
+    const x = a[key], y = b[key];
+    if(typeof x === 'string') return desc ? String(y).localeCompare(String(x),'zh') : String(x).localeCompare(String(y),'zh');
+    return desc ? (y??-1e18)-(x??-1e18) : (x??1e18)-(y??1e18);
+  }).slice(0,200);
+  $('tScreen').innerHTML = `<table><tr>${SCR_COLS.map(([k,t])=>
+    `<th class="${k===key?'sorted':''}" onclick="sortScreen('${k}')">${t}${k===key?(desc?' ↓':' ↑'):''}</th>`).join('')}</tr>` +
+    rows.map(r=>`<tr>
+      <td><span class="nm">${r.f14}</span><span class="cd">${r.f12}</span></td>
+      <td>${num(r.f2)}</td><td class="${cls(r.f3)}">${pct(r.f3)}</td>
+      <td>${num(r.f8)}</td><td>${num(r.f10)}</td>
+      <td>${r.f9>0?num(r.f9,1):'亏损'}</td><td>${num(r.f23,1)}</td>
+      <td>${yi(r.f20)}</td><td>${yi(r.f6)}</td>
+    </tr>`).join('') + '</table>' +
+    (scrRows.length>200?`<div class="meta">仅显示前 200 条,共 ${scrRows.length} 条</div>`:'');
+}
+
+/* ---------- 因子排名 ---------- */
+function wShow(){
+  for(const k of ['Mom','Turn','Vr','Pe','Cap']) $('v'+k).textContent = $('w'+k).value;
+}
+function zscores(rows, get){
+  const vals = rows.map(get).filter(v=>isFinite(v));
+  const mean = vals.reduce((s,v)=>s+v,0)/vals.length;
+  const sd = Math.sqrt(vals.reduce((s,v)=>s+(v-mean)**2,0)/vals.length) || 1;
+  return r=>{
+    const v = get(r);
+    if(!isFinite(v)) return 0;
+    return Math.max(-3, Math.min(3, (v-mean)/sd));   // 截尾防极端值
+  };
+}
+async function runRank(){
+  $('tRank').innerHTML = '<div class="loading">计算中…</div>';
+  await loadUniverse();
+  if(!universe.length){ $('tRank').innerHTML = '<div class="loading">数据拉取失败,稍后重试</div>'; return; }
+  const w = {
+    mom:+$('wMom').value, turn:+$('wTurn').value, vr:+$('wVr').value,
+    pe:+$('wPe').value, cap:+$('wCap').value,
+  };
+  const total = w.mom+w.turn+w.vr+w.pe+w.cap || 1;
+  const zMom  = zscores(universe, r=>r.f3);
+  const zTurn = zscores(universe, r=>r.f8);
+  const zVr   = zscores(universe, r=>r.f10);
+  const zPe   = zscores(universe, r=>r.f9>0 ? -Math.log(r.f9) : NaN);   // PE 越低分越高
+  const zCap  = zscores(universe, r=>-Math.log(r.f20||NaN));            // 市值越小分越高
+  const scored = universe.map(r=>({r, s:
+    (w.mom*zMom(r) + w.turn*zTurn(r) + w.vr*zVr(r) + w.pe*zPe(r) + w.cap*zCap(r)) / total
+  })).sort((a,b)=>b.s-a.s).slice(0,50);
+  $('tRank').innerHTML = `<table><tr><th>#</th><th>名称</th><th>综合分</th><th>现价</th><th>涨跌幅</th><th>换手%</th><th>量比</th><th>市盈率</th><th>总市值</th></tr>` +
+    scored.map((x,i)=>`<tr>
+      <td>${i+1}</td>
+      <td><span class="nm">${x.r.f14}</span><span class="cd">${x.r.f12}</span></td>
+      <td class="nm">${x.s.toFixed(3)}</td>
+      <td>${num(x.r.f2)}</td><td class="${cls(x.r.f3)}">${pct(x.r.f3)}</td>
+      <td>${num(x.r.f8)}</td><td>${num(x.r.f10)}</td>
+      <td>${x.r.f9>0?num(x.r.f9,1):'亏损'}</td><td>${yi(x.r.f20)}</td>
+    </tr>`).join('') + '</table>';
+}
+</script>
+</body>
+</html>
