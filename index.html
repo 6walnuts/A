@@ -237,7 +237,9 @@ function cur(code){ return isUS(code) ? '$' : '¥'; }
 /* ---------- 报价获取与解析 ---------- */
 async function fetchQuotes(codes){
   if(!codes.length) return {};
-  const r = await fetch(`${API}?type=quote&q=${codes.join(',')}`);
+  // 报价接口不认 .OQ/.N 后缀,请求时去掉;解析时再按原 code 匹配回来
+  const qcodes = [...new Set(codes.map(c=>c.split('.')[0]))];
+  const r = await fetch(`${API}?type=quote&q=${qcodes.join(',')}`);
   const text = await r.text();
   const map = {};
   for(const m of text.matchAll(/v_([^=]+)="([^"]*)"/g)){
