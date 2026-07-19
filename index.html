@@ -48,6 +48,15 @@ header h1{font-size:26px;font-weight:700}
 .pill.up{background:var(--up)} .pill.down{background:var(--down)} .pill.flat{background:var(--flat)}
 .alertDot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#f6a821;margin-left:6px;vertical-align:middle}
 .empty{color:var(--sub);text-align:center;padding:60px 20px;font-size:17px;line-height:1.8}
+/* news */
+.nrow{
+  background:var(--card);border-radius:14px;margin-bottom:10px;padding:13px 16px;
+  box-shadow:0 1px 2px rgba(0,0,0,.04);
+}
+.nrow .ntime{font-size:14px;color:var(--sub);margin-bottom:5px}
+.nrow .ntext{font-size:17px;line-height:1.65}
+.nrow.focus{border-left:4px solid var(--up)}
+.nrow.focus .ntext{font-weight:600}
 /* tab bar */
 nav{
   position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--card);
@@ -152,6 +161,11 @@ nav button.active{color:var(--accent);font-weight:600}
   <div class="list" id="indexList"></div>
 </div>
 
+<!-- 新闻 -->
+<div id="view-news" class="view" style="display:none">
+  <div class="list" id="newsList"><div class="empty">加载中…</div></div>
+</div>
+
 <!-- 添加 -->
 <div id="view-add" class="view" style="display:none">
   <div class="addBox">
@@ -167,6 +181,7 @@ nav button.active{color:var(--accent);font-weight:600}
 <nav>
   <button id="tab-watch" class="active" onclick="switchTab('watch')"><span class="ic">★</span>自选</button>
   <button id="tab-index" onclick="switchTab('index')"><span class="ic">◉</span>大盘</button>
+  <button id="tab-news" onclick="switchTab('news')"><span class="ic">📰</span>新闻</button>
   <button id="tab-add" onclick="switchTab('add')"><span class="ic">＋</span>添加</button>
 </nav>
 
@@ -348,13 +363,38 @@ function checkAlerts(){
 /* ---------- Tab 切换 ---------- */
 function switchTab(t){
   curTab = t;
-  for(const x of ['watch','index','add']){
+  for(const x of ['watch','index','news','add']){
     $('view-'+x).style.display = x===t?'block':'none';
     $('tab-'+x).classList.toggle('active', x===t);
   }
-  $('pageTitle').textContent = {watch:'自选股', index:'大盘指数', add:'添加股票'}[t];
+  $('pageTitle').textContent = {watch:'自选股', index:'大盘指数', news:'财经新闻', add:'添加股票'}[t];
   if(t==='add') setTimeout(()=>$('searchInput').focus(), 100);
+  if(t==='news' && Date.now() - newsLast > 60000) fetchNews();
 }
+
+/* ---------- 财经新闻(新浪 7x24 快讯) ---------- */
+let newsLast = 0;
+async function fetchNews(){
+  try{
+    const r = await fetch(`${API}?type=news&n=40`);
+    const j = await r.json();
+    const list = (((j.result||{}).data||{}).feed||{}).list || [];
+    if(!list.length) throw new Error('empty');
+    $('newsList').innerHTML = list.map(it=>{
+      const ct = it.create_time || '';
+      const time = `${ct.slice(5,10)} ${ct.slice(11,16)}`;
+      const txt = (it.rich_text||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+      return `<div class="nrow${it.is_focus==1?' focus':''}">
+        <div class="ntime">${time}</div>
+        <div class="ntext">${txt}</div>
+      </div>`;
+    }).join('');
+    newsLast = Date.now();
+  }catch(e){
+    if(!newsLast) $('newsList').innerHTML = '<div class="empty">暂时拉取不到新闻<br>稍后自动重试</div>';
+  }
+}
+setInterval(()=>{ if(!document.hidden && curTab==='news') fetchNews(); }, 60000);
 
 /* ---------- 搜索 / 添加 ---------- */
 $('searchInput').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doSearch(); } });

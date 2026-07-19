@@ -15,6 +15,9 @@ function buildUrl(type, q, period, n) {
         : `https://ifzq.gtimg.cn/appstock/app/minute/query?code=${q}`;
     case 'search':
       return `https://smartbox.gtimg.cn/s3/?v=2&q=${encodeURIComponent(q)}&t=all`;
+    case 'news':
+      // 新浪财经 7x24 快讯,n = 条数
+      return `https://zhibo.sina.com.cn/api/zhibo/feed?page=1&page_size=${n}&zhibo_id=152`;
     default:
       return null;
   }
@@ -27,7 +30,11 @@ module.exports = async (req, res) => {
 
   const { type = 'quote', q = '', period = 'day', n = '320' } = req.query;
 
-  if (!q || q.length > 300 || !SAFE.test(q) || !/^\w+$/.test(period) || !/^\d+$/.test(n)) {
+  if (!/^\w+$/.test(period) || !/^\d+$/.test(n)) {
+    return res.status(400).json({ error: 'bad params' });
+  }
+  // news 不需要 q,其余类型必须带合法的 q
+  if (type !== 'news' && (!q || q.length > 300 || !SAFE.test(q))) {
     return res.status(400).json({ error: 'bad params' });
   }
   const url = buildUrl(type, q, period, n);

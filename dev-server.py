@@ -22,6 +22,9 @@ def build_url(type_, q, period, n):
         return f'https://ifzq.gtimg.cn/appstock/app/minute/query?code={q}'
     if type_ == 'search':
         return f'https://smartbox.gtimg.cn/s3/?v=2&q={urllib.parse.quote(q)}&t=all'
+    if type_ == 'news':
+        # 新浪财经 7x24 快讯,n = 条数
+        return f'https://zhibo.sina.com.cn/api/zhibo/feed?page=1&page_size={n}&zhibo_id=152'
     return None
 
 
@@ -37,8 +40,10 @@ class Handler(SimpleHTTPRequestHandler):
         period = qs.get('period', ['day'])[0]
         n = qs.get('n', ['320'])[0]
 
-        if not q or len(q) > 300 or not SAFE.match(q) \
-                or not re.match(r'^\w+$', period) or not re.match(r'^\d+$', n):
+        if not re.match(r'^\w+$', period) or not re.match(r'^\d+$', n):
+            return self._json(400, '{"error":"bad params"}')
+        # news 不需要 q,其余类型必须带合法的 q
+        if type_ != 'news' and (not q or len(q) > 300 or not SAFE.match(q)):
             return self._json(400, '{"error":"bad params"}')
         url = build_url(type_, q, period, n)
         if not url:
