@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>股票助手</title>
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="股票助手">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#ffffff">
+<style>
+:root{
+  --up:#e53935; --down:#00a651; --flat:#666;
+  --bg:#f5f6f8; --card:#fff; --text:#1a1a1a; --sub:#8a8f99;
+  --line:#ececf0; --accent:#2b6cf6;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;
+  background:var(--bg); color:var(--text); font-size:18px;
+  padding-bottom:calc(76px + env(safe-area-inset-bottom));
+}
+header{
+  position:sticky;top:0;z-index:10;background:var(--bg);
+  padding:calc(10px + env(safe-area-inset-top)) 16px 8px;
+  display:flex;justify-content:space-between;align-items:center;
+}
+header h1{font-size:26px;font-weight:700}
+#refreshTime{font-size:14px;color:var(--sub)}
+.list{padding:0 12px}
+.row{
+  background:var(--card);border-radius:14px;margin-bottom:10px;
+  padding:14px 16px;display:flex;align-items:center;justify-content:space-between;
+  box-shadow:0 1px 2px rgba(0,0,0,.04);
+}
+.row .l .name{font-size:21px;font-weight:600}
+.row .l .code{font-size:14px;color:var(--sub);margin-top:2px}
+.row .r{text-align:right}
+.row .r .price{font-size:23px;font-weight:700;font-variant-numeric:tabular-nums}
+.pill{
+  display:inline-block;min-width:86px;text-align:center;margin-top:4px;
+  font-size:16px;font-weight:600;color:#fff;border-radius:8px;padding:3px 8px;
+  font-variant-numeric:tabular-nums;
+}
+.pill.up{background:var(--up)} .pill.down{background:var(--down)} .pill.flat{background:var(--flat)}
+.alertDot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#f6a821;margin-left:6px;vertical-align:middle}
+.empty{color:var(--sub);text-align:center;padding:60px 20px;font-size:17px;line-height:1.8}
+/* tab bar */
+nav{
+  position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--card);
+  border-top:1px solid var(--line);display:flex;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+nav button{
+  flex:1;border:0;background:none;font-size:15px;color:var(--sub);
+  padding:9px 0 7px;display:flex;flex-direction:column;align-items:center;gap:2px;
+}
+nav button .ic{font-size:24px;line-height:1}
+nav button.active{color:var(--accent);font-weight:600}
+/* add page */
+.addBox{padding:12px 16px}
+.addBox .inputRow{display:flex;gap:8px}
+.addBox input{
+  flex:1;font-size:19px;padding:13px 14px;border:1px solid var(--line);
+  border-radius:12px;background:var(--card);outline:none;
+}
+.addBox button.go{
+  font-size:18px;padding:0 20px;border:0;border-radius:12px;
+  background:var(--accent);color:#fff;font-weight:600;
+}
+.hintText{color:var(--sub);font-size:15px;margin:10px 4px;line-height:1.7}
+.sres .row{cursor:pointer}
+.sres .addBtn{font-size:16px;color:var(--accent);font-weight:600;border:1.5px solid var(--accent);border-radius:10px;padding:6px 14px;background:none}
+.sres .added{color:var(--sub);border-color:var(--line)}
+/* detail overlay */
+#detail{
+  position:fixed;inset:0;z-index:30;background:var(--bg);display:none;
+  overflow-y:auto;padding-bottom:40px;
+}
+#detail.show{display:block}
+.dHead{
+  position:sticky;top:0;background:var(--bg);z-index:5;
+  padding:calc(8px + env(safe-area-inset-top)) 12px 6px;
+  display:flex;align-items:center;gap:6px;
+}
+.backBtn{border:0;background:none;font-size:19px;color:var(--accent);padding:8px 10px 8px 4px;font-weight:600}
+.dHead .t{font-size:20px;font-weight:700;flex:1;text-align:center;margin-right:70px}
+.dPrice{text-align:center;padding:6px 0 2px}
+.dPrice .big{font-size:44px;font-weight:800;font-variant-numeric:tabular-nums}
+.dPrice .chg{font-size:19px;font-weight:600;margin-top:2px}
+.dPrice .meta{font-size:14px;color:var(--sub);margin-top:6px}
+.up.txt{color:var(--up)} .down.txt{color:var(--down)} .flat.txt{color:var(--flat)}
+.seg{display:flex;gap:8px;padding:12px 14px 8px;}
+.seg button{
+  flex:1;border:0;border-radius:10px;background:var(--card);color:var(--sub);
+  font-size:16px;padding:10px 0;font-weight:600;border:1px solid var(--line);
+}
+.seg button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+#chartBox{height:320px;margin:4px 12px;background:var(--card);border-radius:14px;overflow:hidden;position:relative}
+#chartMsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--sub);font-size:16px}
+.section{background:var(--card);border-radius:14px;margin:14px 12px;padding:16px}
+.section h3{font-size:17px;margin-bottom:12px}
+.alertRow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.alertRow label{font-size:17px;width:110px}
+.alertRow input{
+  flex:1;font-size:19px;padding:10px 12px;border:1px solid var(--line);
+  border-radius:10px;outline:none;
+}
+.btnWide{
+  width:100%;border:0;border-radius:12px;font-size:18px;font-weight:600;
+  padding:14px 0;margin-top:4px;
+}
+.btnSave{background:var(--accent);color:#fff}
+.btnDel{background:#fdecec;color:var(--up);margin-top:14px}
+.smallNote{font-size:14px;color:var(--sub);line-height:1.7;margin-top:10px}
+/* alert banner */
+#banner{
+  position:fixed;top:calc(8px + env(safe-area-inset-top));left:12px;right:12px;z-index:99;
+  background:#fff7e8;border:1.5px solid #f6a821;color:#8a5a00;border-radius:14px;
+  padding:14px 16px;font-size:17px;font-weight:600;display:none;
+  box-shadow:0 4px 16px rgba(0,0,0,.12);
+}
+#banner.show{display:block}
+.toast{
+  position:fixed;bottom:110px;left:50%;transform:translateX(-50%);z-index:99;
+  background:rgba(0,0,0,.78);color:#fff;font-size:16px;padding:10px 20px;
+  border-radius:20px;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap;
+}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="pageTitle">自选股</h1>
+  <span id="refreshTime"></span>
+</header>
+
+<div id="banner" onclick="this.classList.remove('show')"></div>
+
+<!-- 自选 -->
+<div id="view-watch" class="view">
+  <div class="list" id="watchList"></div>
+  <div class="empty" id="watchEmpty" style="display:none">还没有自选股<br>点下方「添加」搜索股票</div>
+</div>
+
+<!-- 大盘 -->
+<div id="view-index" class="view" style="display:none">
+  <div class="list" id="indexList"></div>
+</div>
+
+<!-- 添加 -->
+<div id="view-add" class="view" style="display:none">
+  <div class="addBox">
+    <div class="inputRow">
+      <input id="searchInput" placeholder="输入名称、代码或拼音" autocomplete="off">
+      <button class="go" onclick="doSearch()">搜索</button>
+    </div>
+    <div class="hintText">例如:茅台、600519、AAPL、特斯拉<br>支持 A股 和 美股</div>
+    <div class="list sres" id="searchRes"></div>
+  </div>
+</div>
+
+<nav>
+  <button id="tab-watch" class="active" onclick="switchTab('watch')"><span class="ic">★</span>自选</button>
+  <button id="tab-index" onclick="switchTab('index')"><span class="ic">◉</span>大盘</button>
+  <button id="tab-add" onclick="switchTab('add')"><span class="ic">＋</span>添加</button>
+</nav>
+
+<!-- 个股详情 -->
+<div id="detail">
+  <div class="dHead">
+    <button class="backBtn" onclick="closeDetail()">‹ 返回</button>
+    <div class="t" id="dTitle"></div>
+  </div>
+  <div class="dPrice">
+    <div class="big" id="dPrice">--</div>
+    <div class="chg" id="dChg">--</div>
+    <div class="meta" id="dMeta"></div>
+  </div>
+  <div class="seg" id="chartSeg">
+    <button data-mode="min" class="active" onclick="setChartMode('min',this)">分时</button>
+    <button data-mode="day" onclick="setChartMode('day',this)">日K</button>
+    <button data-mode="week" onclick="setChartMode('week',this)">周K</button>
+    <button data-mode="month" onclick="setChartMode('month',this)">月K</button>
+  </div>
+  <div id="chartBox"><div id="chartMsg">加载中…</div></div>
+
+  <div class="section" id="alertSection">
+    <h3>涨跌提醒(打开本应用时生效)</h3>
+    <div class="alertRow"><label>涨到提醒</label><input id="alertHigh" type="number" inputmode="decimal" placeholder="不设置"></div>
+    <div class="alertRow"><label>跌到提醒</label><input id="alertLow" type="number" inputmode="decimal" placeholder="不设置"></div>
+    <button class="btnWide btnSave" onclick="saveAlert()">保存提醒</button>
+    <div class="smallNote">价格达到设定值时,应用内会弹出提示并响铃。请注意提醒只在应用打开时有效。</div>
+    <button class="btnWide btnDel" id="delBtn" onclick="removeFromDetail()">从自选中删除</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+const API = '/api/hq';
+const UP = '#e53935', DOWN = '#00a651';
+const INDICES = [
+  {code:'sh000001', name:'上证指数'},
+  {code:'sz399001', name:'深证成指'},
+  {code:'sz399006', name:'创业板指'},
+  {code:'usDJI',    name:'道琼斯'},
+  {code:'usIXIC',   name:'纳斯达克'},
+  {code:'usINX',    name:'标普500'},
+];
+const DEFAULT_WATCH = [
+  {code:'sh600519', name:'贵州茅台'},
+  {code:'usAAPL.OQ', name:'苹果'},
+  {code:'usNVDA.OQ', name:'英伟达'},
+];
+
+let watchlist = load('sg_watch', DEFAULT_WATCH);
+let alerts    = load('sg_alerts', {});
+let quotes    = {};          // code -> parsed quote
+let curTab = 'watch';
+let curCode = null, curName = '', chartMode = 'min';
+let chart = null, series = null;
+
+function load(k, def){ try{ const v = JSON.parse(localStorage.getItem(k)); return v==null?def:v; }catch{ return def; } }
+function save(k, v){ localStorage.setItem(k, JSON.stringify(v)); }
+function $(id){ return document.getElementById(id); }
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2000); }
+function isUS(code){ return code.startsWith('us'); }
+function fmt(n, code){ const d = 2; return Number(n).toFixed(d); }
+function cur(code){ return isUS(code) ? '$' : '¥'; }
+
+/* ---------- 报价获取与解析 ---------- */
+async function fetchQuotes(codes){
+  if(!codes.length) return {};
+  const r = await fetch(`${API}?type=quote&q=${codes.join(',')}`);
+  const text = await r.text();
+  const map = {};
+  for(const m of text.matchAll(/v_([^=]+)="([^"]*)"/g)){
+    const f = m[2].split('~');
+    if(f.length < 35) continue;
+    map[m[1]] = {
+      name: f[1], symbol: f[2],
+      price: parseFloat(f[3]), prev: parseFloat(f[4]), open: parseFloat(f[5]),
+      time: f[30], change: parseFloat(f[31]), pct: parseFloat(f[32]),
+      high: parseFloat(f[33]), low: parseFloat(f[34]),
+    };
+  }
+  const out = {};
+  for(const code of codes){
+    out[code] = map[code] || map[code.split('.')[0]] || null;
+  }
+  return out;
+}
+
+/* ---------- 渲染 ---------- */
+function clsOf(v){ return v>0?'up':(v<0?'down':'flat'); }
+function pctText(q){
+  if(!q || isNaN(q.pct)) return '--';
+  const s = q.pct>0?'+':'';
+  return `${s}${q.pct.toFixed(2)}%`;
+}
+function rowHTML(item, q, clickable){
+  const price = q && !isNaN(q.price) ? fmt(q.price, item.code) : '--';
+  const cls = q ? clsOf(q.change) : 'flat';
+  const a = alerts[item.code];
+  const hasAlert = a && (a.high || a.low);
+  return `<div class="row" ${clickable?`onclick="openDetail('${item.code}')"`:''}>
+    <div class="l">
+      <div class="name">${item.name}${hasAlert?'<span class="alertDot"></span>':''}</div>
+      <div class="code">${isUS(item.code)?'美股':'A股'} · ${(q&&q.symbol)||item.code}</div>
+    </div>
+    <div class="r">
+      <div class="price ${cls} txt">${price}</div>
+      <div class="pill ${cls}">${pctText(q)}</div>
+    </div>
+  </div>`;
+}
+function renderWatch(){
+  const box = $('watchList');
+  $('watchEmpty').style.display = watchlist.length? 'none':'block';
+  box.innerHTML = watchlist.map(it=>rowHTML(it, quotes[it.code], true)).join('');
+}
+function renderIndex(){
+  $('indexList').innerHTML = INDICES.map(it=>rowHTML(it, quotes[it.code], true)).join('');
+}
+
+/* ---------- 轮询 ---------- */
+async function refresh(){
+  const codes = [...new Set([...watchlist.map(w=>w.code), ...INDICES.map(i=>i.code)])];
+  try{
+    quotes = await fetchQuotes(codes);
+    renderWatch(); renderIndex();
+    checkAlerts();
+    if(curCode) updateDetailPrice();
+    $('refreshTime').textContent = '更新 ' + new Date().toTimeString().slice(0,8);
+  }catch(e){ /* 网络异常时静默,下轮重试 */ }
+}
+setInterval(()=>{ if(!document.hidden) refresh(); }, 5000);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refresh(); });
+refresh();
+
+/* ---------- 提醒 ---------- */
+function beep(){
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = 880; g.gain.value = 0.15;
+    o.start(); o.stop(ctx.currentTime + 0.35);
+  }catch(e){}
+}
+function fireAlert(msg){
+  const b = $('banner');
+  b.textContent = '🔔 ' + msg;
+  b.classList.add('show');
+  setTimeout(()=>b.classList.remove('show'), 15000);
+  beep();
+  if(navigator.vibrate) navigator.vibrate([200,100,200]);
+  if('Notification' in window && Notification.permission==='granted'){
+    try{ new Notification('股票助手', {body: msg}); }catch(e){}
+  }
+}
+function checkAlerts(){
+  const today = new Date().toDateString();
+  for(const it of watchlist){
+    const a = alerts[it.code]; const q = quotes[it.code];
+    if(!a || !q || isNaN(q.price)) continue;
+    if(a.date !== today){ a.firedHigh = false; a.firedLow = false; a.date = today; }
+    if(a.high && !a.firedHigh && q.price >= a.high){
+      a.firedHigh = true;
+      fireAlert(`${it.name} 已涨到 ${fmt(q.price)}(提醒价 ${a.high})`);
+    }
+    if(a.low && !a.firedLow && q.price <= a.low){
+      a.firedLow = true;
+      fireAlert(`${it.name} 已跌到 ${fmt(q.price)}(提醒价 ${a.low})`);
+    }
+  }
+  save('sg_alerts', alerts);
+}
+
+/* ---------- Tab 切换 ---------- */
+function switchTab(t){
+  curTab = t;
+  for(const x of ['watch','index','add']){
+    $('view-'+x).style.display = x===t?'block':'none';
+    $('tab-'+x).classList.toggle('active', x===t);
+  }
+  $('pageTitle').textContent = {watch:'自选股', index:'大盘指数', add:'添加股票'}[t];
+  if(t==='add') setTimeout(()=>$('searchInput').focus(), 100);
+}
+
+/* ---------- 搜索 / 添加 ---------- */
+$('searchInput').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doSearch(); } });
+
+async function doSearch(){
+  const kw = $('searchInput').value.trim();
+  if(!kw) return;
+  $('searchRes').innerHTML = '<div class="empty">搜索中…</div>';
+  let results = [];
+  try{
+    const r = await fetch(`${API}?type=search&q=${encodeURIComponent(kw)}`);
+    const text = await r.text();
+    const m = /v_hint="([^"]*)"/.exec(text);
+    if(m && m[1] && m[1] !== 'N'){
+      for(const seg of m[1].split('^')){
+        const f = seg.split('~');
+        if(f.length < 3) continue;
+        const mkt = f[0].toLowerCase();
+        if(!['sh','sz','us'].includes(mkt)) continue;
+        let code = mkt + f[1].toUpperCase();
+        let name = f[2];
+        try{ name = decodeURIComponent(JSON.parse('"'+f[2].replace(/"/g,'\\"')+'"')); }catch(e){}
+        results.push({code, name});
+      }
+    }
+  }catch(e){}
+  if(!results.length) results = await fallbackLookup(kw);
+  if(!results.length){
+    $('searchRes').innerHTML = '<div class="empty">没有找到,请检查代码或换个关键词</div>';
+    return;
+  }
+  // 验证并取实时名称
+  const verified = await fetchQuotes(results.map(r=>r.code));
+  results = results.filter(r=>verified[r.code]);
+  results.forEach(r=>{ const q=verified[r.code]; if(q&&q.name) r.name=q.name; });
+  renderSearchResults(results);
+}
+
+async function fallbackLookup(kw){
+  let cands = [];
+  if(/^\d{6}$/.test(kw)) cands = ['sh'+kw, 'sz'+kw];
+  else if(/^[A-Za-z.]{1,8}$/.test(kw)){
+    const u = kw.toUpperCase().replace(/\.(OQ|N)$/,'');
+    cands = [`us${u}.OQ`, `us${u}.N`, `us${u}`];
+  }
+  if(!cands.length) return [];
+  const qs = await fetchQuotes(cands);
+  const out = [];
+  for(const c of cands){
+    const q = qs[c];
+    if(q && q.name && !isNaN(q.price)){ out.push({code:c, name:q.name}); break; }
+  }
+  return out;
+}
+
+function renderSearchResults(results){
+  $('searchRes').innerHTML = results.map(r=>{
+    const added = watchlist.some(w=>w.code===r.code);
+    return `<div class="row">
+      <div class="l">
+        <div class="name">${r.name}</div>
+        <div class="code">${isUS(r.code)?'美股':'A股'} · ${r.code.replace(/^(sh|sz|us)/,'')}</div>
+      </div>
+      <button class="addBtn ${added?'added':''}" onclick="addStock('${r.code}','${r.name.replace(/'/g,'')}',this)">${added?'已添加':'＋ 添加'}</button>
+    </div>`;
+  }).join('');
+}
+
+function addStock(code, name, btn){
+  if(watchlist.some(w=>w.code===code)){ toast('已在自选中'); return; }
+  watchlist.push({code, name});
+  save('sg_watch', watchlist);
+  if(btn){ btn.textContent='已添加'; btn.classList.add('added'); }
+  toast('已添加 ' + name);
+  refresh();
+  if('Notification' in window && Notification.permission==='default'){
+    Notification.requestPermission();
+  }
+}
+
+/* ---------- 详情页 ---------- */
+function openDetail(code){
+  curCode = code;
+  const it = watchlist.find(w=>w.code===code) || INDICES.find(i=>i.code===code);
+  curName = it ? it.name : code;
+  const isIdx = INDICES.some(i=>i.code===code);
+  $('delBtn').style.display = isIdx ? 'none' : 'block';
+  $('alertSection').style.display = 'block';
+  $('dTitle').textContent = curName;
+  const a = alerts[code] || {};
+  $('alertHigh').value = a.high || '';
+  $('alertLow').value = a.low || '';
+  updateDetailPrice();
+  $('detail').classList.add('show');
+  setChartMode('min', document.querySelector('#chartSeg button[data-mode="min"]'));
+}
+function closeDetail(){
+  $('detail').classList.remove('show');
+  curCode = null;
+  destroyChart();
+}
+function updateDetailPrice(){
+  const q = quotes[curCode];
+  if(!q) return;
+  const cls = clsOf(q.change) + ' txt';
+  $('dPrice').className = 'big ' + cls;
+  $('dPrice').textContent = cur(curCode) + fmt(q.price);
+  $('dChg').className = 'chg ' + cls;
+  const s = q.change>0?'+':'';
+  $('dChg').textContent = `${s}${fmt(q.change)}  ${s}${q.pct.toFixed(2)}%`;
+  $('dMeta').textContent = `今开 ${fmt(q.open)} · 最高 ${fmt(q.high)} · 最低 ${fmt(q.low)} · 昨收 ${fmt(q.prev)}`;
+}
+
+/* ---------- 图表 ---------- */
+function destroyChart(){ if(chart){ chart.remove(); chart=null; series=null; } }
+function makeChart(){
+  destroyChart();
+  const box = $('chartBox');
+  chart = LightweightCharts.createChart(box, {
+    width: box.clientWidth, height: box.clientHeight,
+    layout:{ background:{color:'#ffffff'}, textColor:'#666', fontSize:13 },
+    grid:{ vertLines:{color:'#f2f2f5'}, horzLines:{color:'#f2f2f5'} },
+    timeScale:{ borderColor:'#e5e5ea', timeVisible: chartMode==='min', secondsVisible:false },
+    rightPriceScale:{ borderColor:'#e5e5ea' },
+    handleScroll: chartMode!=='min',
+    handleScale: chartMode!=='min',
+  });
+}
+async function setChartMode(mode, btn){
+  chartMode = mode;
+  document.querySelectorAll('#chartSeg button').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  $('chartMsg').style.display='flex'; $('chartMsg').textContent='加载中…';
+  try{
+    if(mode==='min') await drawMinute(); else await drawKline(mode);
+    $('chartMsg').style.display='none';
+  }catch(e){
+    $('chartMsg').textContent = '图表加载失败,请稍后重试';
+  }
+}
+async function drawMinute(){
+  const code = curCode;
+  const r = await fetch(`${API}?type=minute&q=${code}`);
+  const j = await r.json();
+  const d = j.data[code] || j.data[Object.keys(j.data)[0]];
+  const lines = d.data.data, dateStr = d.data.date;
+  const y=+dateStr.slice(0,4), mo=+dateStr.slice(4,6)-1, da=+dateStr.slice(6,8);
+  const pts = [];
+  for(const ln of lines){
+    const p = ln.split(' ');
+    const hh=+p[0].slice(0,2), mm=+p[0].slice(2,4);
+    const price = parseFloat(p[1]);
+    if(isNaN(price)) continue;
+    pts.push({ time: Date.UTC(y,mo,da,hh,mm)/1000, value: price });
+  }
+  if(code!==curCode || chartMode!=='min') return;
+  makeChart();
+  const q = quotes[code];
+  const base = q ? q.prev : pts[0].value;
+  const lastVal = pts.length? pts[pts.length-1].value : base;
+  const upDay = lastVal >= base;
+  series = chart.addAreaSeries({
+    lineColor: upDay?UP:DOWN, lineWidth: 2,
+    topColor: (upDay?UP:DOWN)+'33', bottomColor:'#ffffff00',
+    priceLineVisible:false,
+  });
+  series.setData(pts);
+  series.createPriceLine({ price: base, color:'#999', lineStyle:2, lineWidth:1, title:'昨收' });
+  chart.timeScale().fitContent();
+}
+async function drawKline(period){
+  const code = curCode;
+  const r = await fetch(`${API}?type=kline&q=${code}&period=${period}&n=200`);
+  const j = await r.json();
+  const obj = j.data[code] || j.data[Object.keys(j.data)[0]];
+  const arr = obj['qfq'+period] || obj[period] || [];
+  const data = arr.map(k=>({
+    time: k[0], open:+k[1], high:+k[3], low:+k[4], close:+k[2],
+  })).filter(k=>!isNaN(k.close));
+  if(code!==curCode || chartMode!==period) return;
+  makeChart();
+  series = chart.addCandlestickSeries({
+    upColor:UP, downColor:DOWN, borderUpColor:UP, borderDownColor:DOWN,
+    wickUpColor:UP, wickDownColor:DOWN,
+  });
+  series.setData(data);
+  chart.timeScale().setVisibleLogicalRange({from: Math.max(0, data.length-70), to: data.length});
+}
+
+/* ---------- 提醒保存 / 删除 ---------- */
+function saveAlert(){
+  const h = parseFloat($('alertHigh').value);
+  const l = parseFloat($('alertLow').value);
+  if(!h && !l){ delete alerts[curCode]; save('sg_alerts', alerts); toast('已清除提醒'); renderWatch(); return; }
+  alerts[curCode] = {
+    high: h||null, low: l||null,
+    firedHigh:false, firedLow:false, date:new Date().toDateString(),
+  };
+  save('sg_alerts', alerts);
+  if('Notification' in window && Notification.permission==='default'){
+    Notification.requestPermission();
+  }
+  toast('提醒已保存');
+  renderWatch();
+}
+function removeFromDetail(){
+  if(!confirm(`确定把「${curName}」从自选中删除吗?`)) return;
+  watchlist = watchlist.filter(w=>w.code!==curCode);
+  delete alerts[curCode];
+  save('sg_watch', watchlist); save('sg_alerts', alerts);
+  closeDetail(); renderWatch(); toast('已删除');
+}
+
+/* ---------- PWA ---------- */
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+</script>
+</body>
+</html>
