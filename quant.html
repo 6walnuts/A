@@ -83,6 +83,9 @@ tr:hover td{background:#fafbfd}
   <button id="tb-dash" class="active" onclick="go('dash')">市场看板</button>
   <button id="tb-screen" onclick="go('screen')">股票筛选</button>
   <button id="tb-rank" onclick="go('rank')">因子排名</button>
+  <span style="flex:1"></span>
+  <button id="mk-cn" class="active" onclick="setMkt('cn')">A股</button>
+  <button id="mk-us" onclick="setMkt('us')">美股</button>
 </div>
 
 <!-- 看板 -->
@@ -92,7 +95,7 @@ tr:hover td{background:#fafbfd}
     <div class="card"><h3>涨幅榜</h3><div class="tblWrap" id="tGain"><div class="loading">加载中…</div></div></div>
     <div class="card"><h3>跌幅榜</h3><div class="tblWrap" id="tLose"><div class="loading">加载中…</div></div></div>
     <div class="card"><h3>成交额榜</h3><div class="tblWrap" id="tAmt"><div class="loading">加载中…</div></div></div>
-    <div class="card"><h3>行业板块 · 涨幅榜</h3><div class="tblWrap" id="tSector"><div class="loading">加载中…</div></div></div>
+    <div class="card" id="secCard"><h3>行业板块 · 涨幅榜</h3><div class="tblWrap" id="tSector"><div class="loading">加载中…</div></div></div>
   </div>
 </div>
 
@@ -141,8 +144,11 @@ tr:hover td{background:#fafbfd}
 
 <script>
 const API = '/api/hq';
-const FS_A = 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23';   // 全部 A 股
-const FS_SECTOR = 'm:90+t:2';                        // 行业板块
+const MKTS = {
+  cn: {fs:'m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23', label:'A股'},   // 全部 A 股
+  us: {fs:'m:105,m:106,m:107', label:'美股'},                   // 纳斯达克/纽交所/美交所(含 ETF)
+};
+const FS_SECTOR = 'm:90+t:2';                        // 行业板块(仅 A 股)
 const F = 'f2,f3,f5,f6,f8,f9,f10,f12,f14,f20,f23';   // 价/涨跌幅/量/额/换手/PE/量比/代码/名称/总市值/PB
 const INDICES = [
   {code:'sh000001',name:'上证指数'},{code:'sz399001',name:'深证成指'},{code:'sz399006',name:'创业板指'},
@@ -162,8 +168,9 @@ async function em(params){
 }
 function stamp(){ $('upTime').textContent = '更新 ' + new Date().toTimeString().slice(0,8); }
 
-/* ---------- Tab ---------- */
+/* ---------- Tab / 市场切换 ---------- */
 let cur = 'dash';
+let mkt = localStorage.getItem('qr_mkt') === 'us' ? 'us' : 'cn';
 function go(t){
   cur = t;
   for(const x of ['dash','screen','rank']){
@@ -171,6 +178,22 @@ function go(t){
     $('tb-'+x).classList.toggle('active', x===t);
   }
   if(t==='screen' || t==='rank') loadUniverse();
+}
+function mktUI(){
+  $('mk-cn').classList.toggle('active', mkt==='cn');
+  $('mk-us').classList.toggle('active', mkt==='us');
+  $('secCard').style.display = mkt==='cn' ? '' : 'none';
+}
+function setMkt(m){
+  if(m === mkt) return;
+  mkt = m;
+  localStorage.setItem('qr_mkt', m);
+  mktUI();
+  loadDash();
+  $('tScreen').innerHTML = '<div class="loading">设置条件后点「筛选」</div>';
+  $('screenMeta').textContent = `筛选范围:${MKTS[mkt].label}成交额前 1000 只(公开免费接口,约 1 分钟更新一次)`;
+  $('tRank').innerHTML = '<div class="loading">设置权重后点「计算」</div>';
+  if(cur!=='dash') loadUniverse();
 }
 
 /* ---------- 看板 ---------- */
@@ -204,37 +227,48 @@ function miniTable(rows, isSector){
 }
 async function loadDash(){
   loadIndices();
+  const fs = MKTS[mkt].fs;
+  // 美股列表混有大量权证和仙股,取宽一点再清洗:剔除无涨跌幅、价格<1 美元、成交额<100 万美元的
+  const pz = mkt==='us' ? '100' : '10';
+  const clean = rows => (mkt==='us'
+    ? rows.filter(r=>isFinite(r.f3) && r.f2>=1 && r.f6>=1e6)
+    : rows).slice(0,10);
   try{
-    const [gain, lose, amt, sec] = await Promise.all([
-      em({fid:'f3', po:'1', pz:'10', fs:FS_A, fields:F}),
-      em({fid:'f3', po:'0', pz:'10', fs:FS_A, fields:F}),
-      em({fid:'f6', po:'1', pz:'10', fs:FS_A, fields:F}),
-      em({fid:'f3', po:'1', pz:'10', fs:FS_SECTOR, fields:'f2,f3,f6,f12,f14'}),
-    ]);
-    $('tGain').innerHTML = miniTable(gain);
-    $('tLose').innerHTML = miniTable(lose);
+    const jobs = [
+      em({fid:'f3', po:'1', pz, fs, fields:F}),
+      em({fid:'f3', po:'0', pz, fs, fields:F}),
+      em({fid:'f6', po:'1', pz:'10', fs, fields:F}),
+    ];
+    if(mkt==='cn') jobs.push(em({fid:'f3', po:'1', pz:'10', fs:FS_SECTOR, fields:'f2,f3,f6,f12,f14'}));
+    const [gain, lose, amt, sec] = await Promise.all(jobs);
+    $('tGain').innerHTML = miniTable(clean(gain));
+    $('tLose').innerHTML = miniTable(clean(lose));
     $('tAmt').innerHTML = miniTable(amt);
-    $('tSector').innerHTML = miniTable(sec, true);
+    if(sec) $('tSector').innerHTML = miniTable(sec, true);
     stamp();
   }catch(e){}
 }
+mktUI();
+$('screenMeta').textContent = `筛选范围:${MKTS[mkt].label}成交额前 1000 只(公开免费接口,约 1 分钟更新一次)`;
 loadDash();
 setInterval(()=>{ if(!document.hidden && cur==='dash') loadDash(); }, 60000);
 
-/* ---------- 股票池(筛选与排名共用) ---------- */
-let universe = [], uniTime = 0, uniLoading = null;
+/* ---------- 股票池(筛选与排名共用,按市场分别缓存) ---------- */
+const uni = {cn:{rows:[], time:0, loading:null}, us:{rows:[], time:0, loading:null}};
+function universe(){ return uni[mkt].rows; }
 async function loadUniverse(){
-  if(Date.now()-uniTime < 60000 || uniLoading) return uniLoading;
+  const u = uni[mkt], fs = MKTS[mkt].fs;
+  if(Date.now()-u.time < 60000 || u.loading) return u.loading;
   // 接口单页上限 100 条,并行翻 10 页取成交额前 1000 只
-  uniLoading = Promise.all(
-    Array.from({length:10}, (_,i)=>em({fid:'f6', po:'1', pz:'100', pn:String(i+1), fs:FS_A, fields:F}))
+  u.loading = Promise.all(
+    Array.from({length:10}, (_,i)=>em({fid:'f6', po:'1', pz:'100', pn:String(i+1), fs, fields:F}))
   ).then(pages=>{
     const seen = new Set();
     const rows = pages.flat().filter(r=>!seen.has(r.f12) && seen.add(r.f12));
-    if(rows.length){ universe = rows; uniTime = Date.now(); stamp(); }
-    uniLoading = null;
-  }).catch(()=>{ uniLoading = null; });
-  return uniLoading;
+    if(rows.length){ u.rows = rows; u.time = Date.now(); stamp(); }
+    u.loading = null;
+  }).catch(()=>{ u.loading = null; });
+  return u.loading;
 }
 
 /* ---------- 筛选 ---------- */
@@ -245,7 +279,7 @@ async function runScreen(){
   await loadUniverse();
   const [pMin,pMax,tMin,vrMin,peMin,peMax,cMin,cMax] =
     ['fPctMin','fPctMax','fTurnMin','fVrMin','fPeMin','fPeMax','fCapMin','fCapMax'].map(val);
-  scrRows = universe.filter(r=>{
+  scrRows = universe().filter(r=>{
     if(pMin!=null && !(r.f3>=pMin)) return false;
     if(pMax!=null && !(r.f3<=pMax)) return false;
     if(tMin!=null && !(r.f8>=tMin)) return false;
@@ -256,7 +290,7 @@ async function runScreen(){
     if(cMax!=null && !(r.f20<=cMax*1e8)) return false;
     return true;
   });
-  $('screenMeta').textContent = `符合条件 ${scrRows.length} 只(范围:全市场成交额前 ${universe.length} 只)`;
+  $('screenMeta').textContent = `符合条件 ${scrRows.length} 只(范围:${MKTS[mkt].label}成交额前 ${universe().length} 只)`;
   renderScreen();
 }
 function resetScreen(){
@@ -308,18 +342,19 @@ function zscores(rows, get){
 async function runRank(){
   $('tRank').innerHTML = '<div class="loading">计算中…</div>';
   await loadUniverse();
-  if(!universe.length){ $('tRank').innerHTML = '<div class="loading">数据拉取失败,稍后重试</div>'; return; }
+  const rows = universe();
+  if(!rows.length){ $('tRank').innerHTML = '<div class="loading">数据拉取失败,稍后重试</div>'; return; }
   const w = {
     mom:+$('wMom').value, turn:+$('wTurn').value, vr:+$('wVr').value,
     pe:+$('wPe').value, cap:+$('wCap').value,
   };
   const total = w.mom+w.turn+w.vr+w.pe+w.cap || 1;
-  const zMom  = zscores(universe, r=>r.f3);
-  const zTurn = zscores(universe, r=>r.f8);
-  const zVr   = zscores(universe, r=>r.f10);
-  const zPe   = zscores(universe, r=>r.f9>0 ? -Math.log(r.f9) : NaN);   // PE 越低分越高
-  const zCap  = zscores(universe, r=>-Math.log(r.f20||NaN));            // 市值越小分越高
-  const scored = universe.map(r=>({r, s:
+  const zMom  = zscores(rows, r=>r.f3);
+  const zTurn = zscores(rows, r=>r.f8);
+  const zVr   = zscores(rows, r=>r.f10);
+  const zPe   = zscores(rows, r=>r.f9>0 ? -Math.log(r.f9) : NaN);   // PE 越低分越高
+  const zCap  = zscores(rows, r=>-Math.log(r.f20||NaN));            // 市值越小分越高
+  const scored = rows.map(r=>({r, s:
     (w.mom*zMom(r) + w.turn*zTurn(r) + w.vr*zVr(r) + w.pe*zPe(r) + w.cap*zCap(r)) / total
   })).sort((a,b)=>b.s-a.s).slice(0,50);
   $('tRank').innerHTML = `<table><tr><th>#</th><th>名称</th><th>综合分</th><th>现价</th><th>涨跌幅</th><th>换手%</th><th>量比</th><th>市盈率</th><th>总市值</th></tr>` +
